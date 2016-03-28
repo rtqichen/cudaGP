@@ -12,7 +12,21 @@
  * Constructs the covariance matrix on the device,
  * and returns a device pointer to the matrix.
  */
-float* constructCovMatrix(dataset_t d_ds, Kernel_t kernel_string, float* d_kernel_params);
+float* constructCovMatrix(float *d_X, int n, int d, Kernel_t kernel, float *d_params);
+
+/**
+ * Constructs the cross covariance matrix K(Xtest,X) of size t by n.
+ */
+float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int t);
+
+/**
+ * Calculates the conditional mean of t test data points.
+ * Requires the calculation of Kyf (n by t) covariance matrix
+ * between the training points and testing points.
+ */
+float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy);
+
+float* conditionalCov(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy);
 
 /**
  * Performs Cholesky factorization on a covariance matrix of n by n.
@@ -20,11 +34,6 @@ float* constructCovMatrix(dataset_t d_ds, Kernel_t kernel_string, float* d_kerne
  * triangular half of the covariance matrix.
  */
 void cholFactorizationL(cusolverDnHandle_t cusolverhandle, float* d_cov, int n);
-
-/**
- * Takes the lower triangular Cholesky decomposition of a covariance matrix and inverts it.
- */
-float* invertCovMatrix(cublasHandle_t cublashandle, float* d_cov, int n);
 
 /**
  * Constructs a dense n by n identity matrix on the device,

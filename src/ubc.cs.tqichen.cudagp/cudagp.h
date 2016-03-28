@@ -27,14 +27,20 @@ typedef enum {
     cudagpRationalQuadraticKernel
 } Kernel_t;
 
-struct cudagp_handle_t {
+struct cudagphandle_t {
     dataset_t d_dataset;
     Kernel_t kernel;
-    float* d_kernel_params;
+    float* d_params;
     int numParams;
     float* d_cov;
     cusolverDnHandle_t cusolverHandle;
     cublasHandle_t cublasHandle;
+};
+
+struct prediction_t {
+    float* mean;
+    float* cov;
+    int t;
 };
 
 static int numParams(Kernel_t kernel) {
@@ -55,9 +61,11 @@ static int numParams(Kernel_t kernel) {
 /**
  * Initializes cudaGP on the GPU, and returns a handle.
  */
-cudagp_handle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel); // parameters will be randomized
-cudagp_handle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams); // parameters will be set to these default ones.
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel); // parameters will be randomized
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams); // parameters will be set to these default ones.
 
-void freeCudaGP(cudagp_handle_t ahandle); // frees up the GPU memory.
+prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t);
+
+void freeCudaGP(cudagphandle_t ahandle); // frees up the GPU memory.
 
 #endif /* CUDAGP_H_ */

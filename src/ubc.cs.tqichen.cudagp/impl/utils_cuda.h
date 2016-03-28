@@ -7,6 +7,7 @@
 /*  CUDA ERROR CHECKING   */
 /**************************/
 #define checkCudaErrors(val) check( (val), #val, __FILE__, __LINE__)
+#define checkCusolverErrors(err) __checkCusolverErrors(err, __FILE__, __LINE__)
 
 template<typename T>
 void check(T err, const char* const func, const char* const file, const int line) {
@@ -61,8 +62,6 @@ static void __checkCusolverErrors(cusolverStatus_t err, const char *file, const 
         exit(EXIT_FAILURE);
     }
 }
-
-static void checkCusolverErrors(cusolverStatus_t err) { __checkCusolverErrors(err, __FILE__, __LINE__); }
 
 /**************************/
 /*   Returns  ceil(a/b)   */

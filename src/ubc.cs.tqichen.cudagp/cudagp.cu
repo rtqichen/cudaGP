@@ -16,13 +16,13 @@ void printMatrix(float* matrix, int numRows, int numCols) {
     printf("Printing %d by %d matrix:\n", numRows, numCols);
     for (int i=0; i<numRows; i++) {
         for (int j=0; j<numCols; j++) {
-            printf("%.2f ", matrix[i*numCols+j]);
+            printf("%.4f ", matrix[i*numCols+j]);
         }
         printf("\n");
     }
 }
 
-void readData(float* X, float* y, int n) {
+int readData(float* X, float* y, int n) {
 
     FILE *infile = fopen("testdata/grayroos.dat", "r");
     if (!infile) {
@@ -38,6 +38,8 @@ void readData(float* X, float* y, int n) {
         y[i] = (float) b;
         i++;
     }
+
+    return n;
 }
 
 float* constructCovMatrix_ref(float* X, int n, int d, Kernel_t kernel_string, float* h_kernel_params) {
@@ -55,29 +57,49 @@ float* constructCovMatrix_ref(float* X, int n, int d, Kernel_t kernel_string, fl
     return h_cov;
 }
 
-//int main(int argc, const char** argv) {
-//
-//    srand(0);
-//
-//    float *X,*y;
-//
+float* linspace(int min, int max, int len) {
+    float *x = (float*) malloc(len*sizeof(float));
+    for (int i=0; i<len; i++) {
+        x[i] = min + (max-min)*(i/(float)(len-1));
+    }
+    return x;
+}
+
+int main(int argc, const char** argv) {
+
+    srand(0);
+
 //    int n=10000; // for full GP, this number <= 10^4
-//    int d=50;
+//    int d=1;
+//    float *X = (float*)malloc(n*d*sizeof(float));
+//    float *y = (float*)malloc(n*sizeof(float));
+
+
+    int n = 10000; int d = 1;
+    float *X = linspace(0,5000,n);
+    float *y = linspace(0,5000,n);
+
+    int t = 10000;
+    float* Xtest = linspace(1, 4999, t);
+
+//    int n = 42;
+//    int d = 1;
 //    X = (float*)malloc(n*d*sizeof(float));
 //    y = (float*)malloc(n*sizeof(float));
-//    randomFloats(X,n*d);
-//    randomFloats(y,n);
+//    readData(X, y, n);
 //
-//    float params[1] = {1.0f};
-//
-//    // initialize the GP
-//    cudagp_handle_t gp = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
-//
-//    printf("Done?\n");
-//    cudaDeviceSynchronize();
-//    freeCudaGP(gp);
-//    printf("Done!\n");
-//
-//    cudaDeviceReset();
-//    return EXIT_SUCCESS;
-//}
+    float params[1] = {0.6f};
+
+    // initialize the GP
+    cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
+
+    prediction_t pred = predict(cudagphandle, Xtest, t);
+
+//    printMatrix(pred.mean, t, 1);
+
+    freeCudaGP(cudagphandle);
+    printf("Done!\n");
+
+    cudaDeviceReset();
+    return EXIT_SUCCESS;
+}

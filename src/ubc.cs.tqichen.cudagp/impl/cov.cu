@@ -13,41 +13,168 @@
 #define BLOCKSIZE 1024
 #define BLOCKSIZE2D 32
 
-#define MULTI 5 // need to debug this before changing to >1
+/*
+ * Functions that implement this must be tested VERY carefully...
+ * So far functions that implement this:
+ *  - eye
+ */
+#define MULTI 5
 
-#define DEFAULT_FILL_MODE CUBLAS_FILL_MODE_UPPER
-
-void printCov(float* d_cov, int n);
+#define CHOLESKY_FILL_MODE CUBLAS_FILL_MODE_UPPER
 
 /**
  * Computes the full covariance matrix and stores it in d_cov.
  */
-__global__ void constructCovMatrix_k(dataset_t d_ds, Kernel_t kernel_string, float* d_kernel_params, float* d_cov) {
+__global__ void constructCovMatrix_k(float *d_X, int n, int d, Kernel_t kernel, float* d_params, float* d_cov) {
 
     unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
     unsigned int idy = threadIdx.y + blockIdx.y*blockDim.y;
 
-    if (idx < d_ds.n && idy < d_ds.n) {
-        kernelfunc kernfunc = getKernelFunction(kernel_string);
+    if (idx < n && idy < n) {
+        kernelfunc kernfunc = getKernelFunction(kernel);
 
-        float *vecx = &d_ds.X[idx*d_ds.d];
-        float *vecy = &d_ds.X[idy*d_ds.d];
+        float *vecx = &d_X[idx*d];
+        float *vecy = &d_X[idy*d];
 
-        d_cov[idx*d_ds.n+idy] = kernfunc(vecx,vecy,d_ds.d,d_kernel_params);
+        d_cov[idx*n+idy] = kernfunc(vecx,vecy,d,d_params);
     }
 }
 
-float* constructCovMatrix(dataset_t d_ds, Kernel_t kernel_string, float* d_kernel_params) {
+
+float* constructCovMatrix(float *d_X, int n, int d, Kernel_t kernel, float *d_params) {
 
     dim3 blocksize(BLOCKSIZE2D,BLOCKSIZE2D);
-    dim3 gridsize = divUp(dim3(d_ds.n,d_ds.n), blocksize);
+    dim3 gridsize = divUp(dim3(n,n), blocksize);
 
-    float* d_cov;
-    checkCudaErrors(cudaMalloc((void**)&d_cov, d_ds.n*d_ds.n*sizeof(float)));
+    float *d_cov;
+    checkCudaErrors(cudaMalloc((void**)&d_cov, n*n*sizeof(float)));
 
-    constructCovMatrix_k<<<gridsize,blocksize>>>(d_ds, kernel_string, d_kernel_params, d_cov);
+    constructCovMatrix_k<<<gridsize,blocksize>>>(d_X, n, d, kernel, d_params, d_cov);
 
     return d_cov;
+}
+
+/**
+ * Kernel for computing the t by n matrix K(X,Xtest)
+ */
+__global__ void constructCrossCovMatrix_k(float *d_X, int n, float *d_Xtest, int t,
+        Kernel_t kernel_string, float *d_kernel_params, int d, float *d_covfy)
+{
+    unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
+    unsigned int idy = threadIdx.y + blockIdx.y*blockDim.y;
+
+    if (idx < t && idy < n) {
+        kernelfunc kernfunc = getKernelFunction(kernel_string);
+
+        float *vecx = &d_X[idx*d];
+        float *vecy = &d_Xtest[idy*d];
+
+        d_covfy[idx*n+idy] = kernfunc(vecx, vecy, d, d_kernel_params);
+    }
+}
+
+/**
+ * Constructs the n by t covariance matrix between two sets of points.
+ */
+float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int t)
+{
+    int n = cudagphandle.d_dataset.n;
+    int d = cudagphandle.d_dataset.d;
+    float *d_X = cudagphandle.d_dataset.X;
+    Kernel_t kernel = cudagphandle.kernel;
+    float *d_params = cudagphandle.d_params;
+
+    dim3 blocksize(BLOCKSIZE2D, BLOCKSIZE2D);
+    dim3 gridsize = divUp(dim3(t, n), blocksize);
+
+    float* d_covfy;
+    checkCudaErrors(cudaMalloc((void**)&d_covfy, n*t*sizeof(float)));
+
+    constructCrossCovMatrix_k<<<gridsize,blocksize>>>(d_X, n, d_Xtest, t, kernel, d_params, d, d_covfy);
+
+    return d_covfy;
+}
+
+/**
+ * Calculates the conditional mean of the test data points given the prior GP.
+ * Calculates Kfy * Kyy^-1 * y
+ */
+float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy) {
+    cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
+    cublasHandle_t cublashandle = cudagphandle.cublasHandle;
+    float *d_cov = cudagphandle.d_cov;
+    float *d_y = cudagphandle.d_dataset.y;
+    int n = cudagphandle.d_dataset.n;
+
+    // create container for the intermediate value
+    float *d_interm;
+    checkCudaErrors(cudaMalloc((void**)&d_interm, n*sizeof(float)));
+    checkCudaErrors(cudaMemcpy(d_interm, d_y, n*sizeof(float), cudaMemcpyDeviceToDevice));
+
+    // calculate z = Kyy^-1 * y
+    int *d_devInfo;
+    checkCudaErrors(cudaMalloc((void**)&d_devInfo, sizeof(int)));
+    checkCusolverErrors(cusolverDnSpotrs(cusolverhandle, CHOLESKY_FILL_MODE, n, 1, d_cov, n, d_interm, n, d_devInfo));
+
+    int h_devInfo = 0;  checkCudaErrors(cudaMemcpy(&h_devInfo, d_devInfo, sizeof(int), cudaMemcpyDeviceToHost));
+    if (h_devInfo != 0) {
+        fprintf(stderr, "ERROR: Failed to compute Kyf^-1*y with devInfo=%d\n", h_devInfo);
+        exit(EXIT_FAILURE);
+    }
+
+    // calculate Kfy * z
+    float *d_mean;
+    checkCudaErrors(cudaMalloc((void**)&d_mean, t*sizeof(float)));
+
+    float alpha = 1.0f; float beta = 0.0f;
+    cublasSgemv_v2(cublashandle, CUBLAS_OP_T, t, n, &alpha, d_covfy, t, d_interm, 1, &beta, d_mean, 1);
+
+    cudaFree(d_interm);
+    cudaFree(d_devInfo);
+
+    return d_mean;
+}
+
+/**
+ * Calculates the conditional covariance of the test data points given the prior GP.
+ * Calculates Kff - Kfy * Kyy^-1 *Kyf
+ */
+float* conditionalCov(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy) {
+    cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
+    cublasHandle_t cublashandle = cudagphandle.cublasHandle;
+    float *d_cov = cudagphandle.d_cov;
+    int n = cudagphandle.d_dataset.n;
+    int d = cudagphandle.d_dataset.d;
+    Kernel_t kernel = cudagphandle.kernel;
+    float* d_params = cudagphandle.d_params;
+
+    // create container for the intermediate value
+    float *d_interm;
+    checkCudaErrors(cudaMalloc((void**)&d_interm, n*t*sizeof(float)));
+    checkCudaErrors(cudaMemcpy(d_interm, d_covfy, n*t*sizeof(float), cudaMemcpyDeviceToDevice));
+
+    // calculate Z = Kyy^-1 * Kyf
+    int *d_devInfo;
+    checkCudaErrors(cudaMalloc((void**)&d_devInfo, sizeof(int)));
+    checkCusolverErrors(cusolverDnSpotrs(cusolverhandle, CHOLESKY_FILL_MODE, n, t, d_cov, n, d_interm, n, d_devInfo));
+
+    int h_devInfo = 0;  checkCudaErrors(cudaMemcpy(&h_devInfo, d_devInfo, sizeof(int), cudaMemcpyDeviceToHost));
+    if (h_devInfo != 0) {
+        fprintf(stderr, "ERROR: Failed to compute Kyf^-1*Kyf with devInfo=%d\n", h_devInfo);
+        exit(EXIT_FAILURE);
+    }
+
+    // calculate Kff
+    float* d_covff = constructCovMatrix(d_Xtest, t, d, kernel, d_params);
+
+    // calculate Kff - Kfy * Z
+    float alpha = -1.0f; float beta = 1.0f;
+    cublasSgemm_v2(cublashandle, CUBLAS_OP_T, CUBLAS_OP_N, t, t, n, &alpha, d_covfy, n, d_interm, n, &beta, d_covff, t);
+
+    cudaFree(d_interm);
+    cudaFree(d_devInfo);
+
+    return d_covff;
 }
 
 /**
@@ -59,11 +186,11 @@ void cholFactorizationL(cusolverDnHandle_t cusolverhandle, float* d_cov, int n) 
 
     // --- Compute Cholesky factorization
     int Lwork = 0; float* d_workspace;
-    checkCusolverErrors(cusolverDnSpotrf_bufferSize(cusolverhandle, DEFAULT_FILL_MODE, n, d_cov, n, &Lwork));
+    checkCusolverErrors(cusolverDnSpotrf_bufferSize(cusolverhandle, CHOLESKY_FILL_MODE, n, d_cov, n, &Lwork));
     checkCudaErrors(cudaMalloc((void**)&d_workspace, Lwork * sizeof(float)));
 
     int *d_devInfo; cudaMalloc(&d_devInfo, sizeof(int));
-    checkCusolverErrors(cusolverDnSpotrf(cusolverhandle, DEFAULT_FILL_MODE, n, d_cov, n, d_workspace, Lwork, d_devInfo));
+    checkCusolverErrors(cusolverDnSpotrf(cusolverhandle, CHOLESKY_FILL_MODE, n, d_cov, n, d_workspace, Lwork, d_devInfo));
 
     int h_devInfo = 0;  checkCudaErrors(cudaMemcpy(&h_devInfo, d_devInfo, sizeof(int), cudaMemcpyDeviceToHost));
     if (h_devInfo != 0) {
@@ -80,6 +207,9 @@ __global__ void eye_k(unsigned int n, float* d_eye) {
 
     unsigned int idx = blockIdx.x * (MULTI*dimx) + threadIdx.x;
     unsigned int idy = blockIdx.y * (MULTI*dimy) + threadIdx.y;
+
+    if (idx < n || idy < n)
+        return;
 
     for (int i=0; i<MULTI; i++) {
         for (int j=0; j<MULTI; j++) {
@@ -104,62 +234,3 @@ float* eye(unsigned int n) {
 
     return d_eye;
 }
-
-/**
- * Is this step really neccessary?
- */
-float* invertCovMatrixAfterChol(cusolverDnHandle_t cusolverhandle, float* d_cov, int n) {
-    float* d_eye = eye(n);
-
-    int *d_devInfo; cudaMalloc(&d_devInfo, sizeof(int));
-    checkCusolverErrors(cusolverDnSpotrs(cusolverhandle, DEFAULT_FILL_MODE, n, n, d_cov, n, d_eye, n, d_devInfo));
-
-    int h_devInfo = 0;  checkCudaErrors(cudaMemcpy(&h_devInfo, d_devInfo, sizeof(int), cudaMemcpyDeviceToHost));
-    if (h_devInfo != 0) {
-        fprintf(stderr, "ERROR: Failed to compute inverse of covariance matrix with devInfo=%d\n", h_devInfo);
-        exit(EXIT_FAILURE);
-    }
-
-    cudaFree(d_devInfo);
-
-    return d_eye;
-}
-
-int main(int argc, char **argv) {
-
-    float h_test[] = {
-            2.8345,    1.8859,    2.0785,    1.9442,    1.9567,
-            1.8859,    2.3340,    2.0461,    2.3164,    2.0875,
-            2.0785,    2.0461,    2.8591,    2.4606,    1.9473,
-            1.9442,    2.3164,    2.4606,    2.6848,    2.2768,
-            1.9567,    2.0875,    1.9473,    2.2768,    2.5853};
-
-    int size = 5;
-
-    float* d_test;
-    checkCudaErrors(cudaMalloc((void**)&d_test, size*size*sizeof(float)));
-    checkCudaErrors(cudaMemcpy(d_test, h_test, size*size*sizeof(float), cudaMemcpyHostToDevice));
-
-    printDeviceSqrMatrix(d_test,size);
-
-    cublasHandle_t cublashandle;
-    cublasCreate_v2(&cublashandle);
-
-    cusolverDnHandle_t cusolverhandle;
-    cusolverDnCreate(&cusolverhandle);
-
-    cholFactorizationL(cusolverhandle, d_test, size);
-
-    printf("Chol factorization:\n");
-    printDeviceSqrMatrix(d_test, size);
-
-    float* d_inv = invertCovMatrixAfterChol(cusolverhandle, d_test, size);
-
-    printf("Inverse?\n");
-    printDeviceSqrMatrix(d_inv,size);
-
-    cudaFree(d_inv);
-    cudaFree(d_test);
-    cudaDeviceReset();
-}
-

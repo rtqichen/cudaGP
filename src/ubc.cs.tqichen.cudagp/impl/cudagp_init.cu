@@ -37,7 +37,11 @@ dataset_t transferDataToDevice(const float *h_X, const float* h_y, const int n, 
     return d_data;
 }
 
-cudagp_handle_t initializeCudaGP(
+/**
+ * Transfers the full dataset onto the GPU.
+ * Then calculates the covariance matrix along with its Cholesky decomposition.
+ */
+cudagphandle_t initializeCudaGP(
         const float *h_X,
         const float* h_y,
         const int n,
@@ -67,7 +71,7 @@ cudagp_handle_t initializeCudaGP(
     checkCudaErrors(cudaMemcpy(d_params, h_params, np*sizeof(float), cudaMemcpyHostToDevice));
 
     // --- Construct full covariance matrix
-    float* d_cov = constructCovMatrix(d_ds, kernel, d_params);
+    float* d_cov = constructCovMatrix(d_ds.X, d_ds.n, d_ds.d, kernel, d_params);
 
     // --- CuBLAS initialization
     cublasHandle_t cublashandle;
@@ -80,34 +84,32 @@ cudagp_handle_t initializeCudaGP(
     // --- Calculate Cholesky factorization
     cholFactorizationL(cusolverhandle, d_cov, n);
 
-    // --- Calculate inverse of the covariance matrix from Cholesky factorization
-    // TODO
-
     // --- CudaGP handle
-    cudagp_handle_t d_fullgp;
-    d_fullgp.d_dataset = d_ds;
-    d_fullgp.kernel = kernel;
-    d_fullgp.numParams = np;
-    d_fullgp.d_kernel_params = d_params;
-    d_fullgp.d_cov = d_cov;
-    d_fullgp.cusolverHandle = cusolverhandle;
-    d_fullgp.cublasHandle = cublashandle;
+    cudagphandle_t cudagphandle;
+    cudagphandle.d_dataset = d_ds;
+    cudagphandle.kernel = kernel;
+    cudagphandle.numParams = np;
+    cudagphandle.d_params = d_params;
+    cudagphandle.d_cov = d_cov;
+    cudagphandle.cusolverHandle = cusolverhandle;
+    cudagphandle.cublasHandle = cublashandle;
 
-    return d_fullgp;
+    return cudagphandle;
 }
 
-cudagp_handle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel) {
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel) {
     return initializeCudaGP(h_X, h_y, n, d, kernel, 0, false);
 }
 
-cudagp_handle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams) {
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams) {
     return initializeCudaGP(h_X, h_y, n, d, kernel, defaultparams, true);
 }
 
-void freeCudaGP(cudagp_handle_t ahandle) {
+void freeCudaGP(cudagphandle_t ahandle) {
     checkCudaErrors(cudaFree(ahandle.d_dataset.X));
     checkCudaErrors(cudaFree(ahandle.d_dataset.y));
     checkCudaErrors(cudaFree(ahandle.d_cov));
-    checkCudaErrors(cudaFree(ahandle.d_kernel_params));
+    checkCudaErrors(cudaFree(ahandle.d_params));
     checkCusolverErrors(cusolverDnDestroy(ahandle.cusolverHandle));
+    cublasDestroy(ahandle.cublasHandle);
 }
