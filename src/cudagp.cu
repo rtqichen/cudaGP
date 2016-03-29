@@ -69,33 +69,23 @@ int main(int argc, const char** argv) {
 
     srand(0);
 
-//    int n=10000; // for full GP, this number <= 10^4
-//    int d=1;
-//    float *X = (float*)malloc(n*d*sizeof(float));
-//    float *y = (float*)malloc(n*sizeof(float));
+    int n = 42;
+    int d = 1;
+    float* X = (float*)malloc(n*d*sizeof(float));
+    float* y = (float*)malloc(n*sizeof(float));
+    readData(X, y, n);
 
+    int t = 201;
+    float* Xtest = linspace(500, 860, t);
 
-    int n = 10000; int d = 1;
-    float *X = linspace(0,5000,n);
-    float *y = linspace(0,5000,n);
-
-    int t = 10000;
-    float* Xtest = linspace(1, 4999, t);
-
-//    int n = 42;
-//    int d = 1;
-//    X = (float*)malloc(n*d*sizeof(float));
-//    y = (float*)malloc(n*sizeof(float));
-//    readData(X, y, n);
-//
-    float params[1] = {0.6f};
+    float params[1] = {8.0f};
 
     // initialize the GP
     cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
 
     prediction_t pred = predict(cudagphandle, Xtest, t);
 
-//    printMatrix(pred.mean, t, 1);
+    printMatrix(pred.mean, t, 1);
 
     freeCudaGP(cudagphandle);
     printf("Done!\n");

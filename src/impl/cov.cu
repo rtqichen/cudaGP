@@ -55,7 +55,7 @@ float* constructCovMatrix(float *d_X, int n, int d, Kernel_t kernel, float *d_pa
 }
 
 /**
- * Kernel for computing the t by n matrix K(X,Xtest)
+ * Kernel for computing the t by n matrix K(Xtest,X)
  */
 __global__ void constructCrossCovMatrix_k(float *d_X, int n, float *d_Xtest, int t,
         Kernel_t kernel_string, float *d_kernel_params, int d, float *d_covfy)
@@ -66,15 +66,15 @@ __global__ void constructCrossCovMatrix_k(float *d_X, int n, float *d_Xtest, int
     if (idx < t && idy < n) {
         kernelfunc kernfunc = getKernelFunction(kernel_string);
 
-        float *vecx = &d_X[idx*d];
-        float *vecy = &d_Xtest[idy*d];
+        float *vecx = &d_Xtest[idx*d];
+        float *vecy = &d_X[idy*d];
 
         d_covfy[idx*n+idy] = kernfunc(vecx, vecy, d, d_kernel_params);
     }
 }
 
 /**
- * Constructs the n by t covariance matrix between two sets of points.
+ * Constructs the t by n covariance matrix between two sets of points.
  */
 float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int t)
 {
@@ -88,7 +88,7 @@ float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int 
     dim3 gridsize = divUp(dim3(t, n), blocksize);
 
     float* d_covfy;
-    checkCudaErrors(cudaMalloc((void**)&d_covfy, n*t*sizeof(float)));
+    checkCudaErrors(cudaMalloc((void**)&d_covfy, t*n*sizeof(float)));
 
     constructCrossCovMatrix_k<<<gridsize,blocksize>>>(d_X, n, d_Xtest, t, kernel, d_params, d, d_covfy);
 
@@ -127,7 +127,7 @@ float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float
     checkCudaErrors(cudaMalloc((void**)&d_mean, t*sizeof(float)));
 
     float alpha = 1.0f; float beta = 0.0f;
-    cublasSgemv_v2(cublashandle, CUBLAS_OP_T, t, n, &alpha, d_covfy, t, d_interm, 1, &beta, d_mean, 1);
+    checkCublasErrors(cublasSgemv_v2(cublashandle, CUBLAS_OP_T, n, t, &alpha, d_covfy, n, d_interm, 1, &beta, d_mean, 1));
 
     cudaFree(d_interm);
     cudaFree(d_devInfo);
