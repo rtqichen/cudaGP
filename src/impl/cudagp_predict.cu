@@ -30,19 +30,19 @@ prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t) {
     float *d_mean = conditionalMean(cudagphandle, d_Xtest, t, d_covfy);
 
     // --- Calculate test covariance (t by t)
-    //float* d_tcov = conditionalCov(cudagphandle, d_Xtest, t, d_covfy);
+    float* d_tcov = conditionalCov(cudagphandle, d_Xtest, t, d_covfy);
 
     // --- Transfer data to host
 
     float *h_mean = (float*) malloc(t*sizeof(float));
     checkCudaErrors(cudaMemcpy(h_mean, d_mean, t*sizeof(float), cudaMemcpyDeviceToHost));
 
-    //float* h_tcov = (float*) malloc(t*t*sizeof(float));
-    //checkCudaErrors(cudaMemcpy(h_tcov, d_tcov, t*t*sizeof(float), cudaMemcpyDeviceToHost));
+    float* h_tcov = (float*) malloc(t*t*sizeof(float));
+    checkCudaErrors(cudaMemcpy(h_tcov, d_tcov, t*t*sizeof(float), cudaMemcpyDeviceToHost));
 
     struct prediction_t pred;
     pred.mean = h_mean;
-    //pred.cov = h_tcov;
+    pred.cov = h_tcov;
     pred.t = t;
 
     return pred;

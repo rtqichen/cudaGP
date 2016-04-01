@@ -169,7 +169,7 @@ float* conditionalCov(cudagphandle_t cudagphandle, float *d_Xtest, int t, float 
 
     // calculate Kff - Kfy * Z
     float alpha = -1.0f; float beta = 1.0f;
-    cublasSgemm_v2(cublashandle, CUBLAS_OP_T, CUBLAS_OP_N, t, t, n, &alpha, d_covfy, n, d_interm, n, &beta, d_covff, t);
+    checkCublasErrors(cublasSgemm_v2(cublashandle, CUBLAS_OP_T, CUBLAS_OP_N, t, t, n, &alpha, d_covfy, n, d_interm, n, &beta, d_covff, t));
 
     cudaFree(d_interm);
     cudaFree(d_devInfo);

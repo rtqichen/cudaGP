@@ -22,6 +22,13 @@ void printMatrix(float* matrix, int numRows, int numCols) {
     }
 }
 
+void printDiagOfMatrix(float* matrix, int numRows, int numCols) {
+    printf("Printing diagonals of %d by %d matrix:\n", numRows, numCols);
+    for (int i=0; i<min(numRows,numCols); i++) {
+        printf("%.4f\n", matrix[i*numCols+i]);
+    }
+}
+
 int readData(float* X, float* y, int n) {
 
     FILE *infile = fopen("testdata/grayroos.dat", "r");
@@ -78,14 +85,15 @@ int main(int argc, const char** argv) {
     int t = 201;
     float* Xtest = linspace(500, 860, t);
 
-    float params[1] = {8.0f};
+    float params[1] = {10.0f};
 
     // initialize the GP
     cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
 
     prediction_t pred = predict(cudagphandle, Xtest, t);
 
-    printMatrix(pred.mean, t, 1);
+    //printMatrix(pred.mean, t, 1);
+    //printDiagOfMatrix(pred.cov, t, t);
 
     freeCudaGP(cudagphandle);
     printf("Done!\n");
