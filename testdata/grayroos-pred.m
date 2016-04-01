@@ -6,10 +6,10 @@ clear all, close all
 
 tdfread('grayroos-header.dat');
 
-xtest = linspace(500, 850, 201)';
+xtest = linspace(500, 860, 201)';
 
-l = 8;
-kern = @(r) exp(-r^2/(2*l^2));
+l = 10;
+kern = @(r) exp(-r^2/((l^2)*2));
 
 % construct Kyy
 A = [];
@@ -36,7 +36,7 @@ Kff = arrayfun(kern, C);
 
 % calculate mean and covariance
 pred.mean = Kfy * (K\y);
-pred.cov = Kff - Kfy*(K\Kfy');
+pred.cov = Kff - (Kfy*(K\Kfy'));
 
 plot(xtest, pred.mean)
 hold on
