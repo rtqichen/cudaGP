@@ -60,7 +60,7 @@ cudagphandle_t initializeCudaGP(
     if (!h_defaultParams) {
         h_params = (float*) malloc(np*sizeof(float));
         for (int i=0; i<np; i++) {
-            h_params[i] = rand() / RAND_MAX;
+            h_params[i] = rand() / RAND_MAX; // is there a smarter way to do initialization? this can introduce numerical instability.
         }
     } else {
         h_params = h_defaultParams;
@@ -70,9 +70,6 @@ cudagphandle_t initializeCudaGP(
     checkCudaErrors(cudaMalloc((void**)&d_params, np*sizeof(float)));
     checkCudaErrors(cudaMemcpy(d_params, h_params, np*sizeof(float), cudaMemcpyHostToDevice));
 
-    // --- Construct full covariance matrix
-    float* d_cov = constructCovMatrix(d_ds.X, d_ds.n, d_ds.d, kernel, d_params);
-
     // --- CuBLAS initialization
     cublasHandle_t cublashandle;
     cublasCreate(&cublashandle);
@@ -81,16 +78,12 @@ cudagphandle_t initializeCudaGP(
     cusolverDnHandle_t cusolverhandle;
     cusolverDnCreate(&cusolverhandle);
 
-    // --- Calculate Cholesky factorization
-    cholFactorizationL(cusolverhandle, d_cov, n);
-
     // --- CudaGP handle
     cudagphandle_t cudagphandle;
     cudagphandle.d_dataset = d_ds;
     cudagphandle.kernel = kernel;
     cudagphandle.numParams = np;
     cudagphandle.d_params = d_params;
-    cudagphandle.d_cov = d_cov;
     cudagphandle.cusolverHandle = cusolverhandle;
     cudagphandle.cublasHandle = cublashandle;
 
@@ -108,7 +101,6 @@ cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t k
 void freeCudaGP(cudagphandle_t ahandle) {
     checkCudaErrors(cudaFree(ahandle.d_dataset.X));
     checkCudaErrors(cudaFree(ahandle.d_dataset.y));
-    checkCudaErrors(cudaFree(ahandle.d_cov));
     checkCudaErrors(cudaFree(ahandle.d_params));
     checkCusolverErrors(cusolverDnDestroy(ahandle.cusolverHandle));
     cublasDestroy(ahandle.cublasHandle);

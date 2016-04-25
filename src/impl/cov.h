@@ -24,9 +24,9 @@ float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int 
  * Requires the calculation of Kyf (n by t) covariance matrix
  * between the training points and testing points.
  */
-float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy);
+float* conditionalMean(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy);
 
-float* conditionalCov(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy);
+float* conditionalCov(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy);
 
 /**
  * Performs Cholesky factorization on a covariance matrix of n by n.

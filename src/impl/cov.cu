@@ -99,10 +99,9 @@ float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int 
  * Calculates the conditional mean of the test data points given the prior GP.
  * Calculates Kfy * Kyy^-1 * y
  */
-float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy) {
+float* conditionalMean(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy) {
     cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
     cublasHandle_t cublashandle = cudagphandle.cublasHandle;
-    float *d_cov = cudagphandle.d_cov;
     float *d_y = cudagphandle.d_dataset.y;
     int n = cudagphandle.d_dataset.n;
 
@@ -139,14 +138,13 @@ float* conditionalMean(cudagphandle_t cudagphandle, float *d_Xtest, int t, float
  * Calculates the conditional covariance of the test data points given the prior GP.
  * Calculates Kff - Kfy * Kyy^-1 *Kyf
  */
-float* conditionalCov(cudagphandle_t cudagphandle, float *d_Xtest, int t, float *d_covfy) {
+float* conditionalCov(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy) {
     cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
     cublasHandle_t cublashandle = cudagphandle.cublasHandle;
-    float *d_cov = cudagphandle.d_cov;
     int n = cudagphandle.d_dataset.n;
     int d = cudagphandle.d_dataset.d;
     Kernel_t kernel = cudagphandle.kernel;
-    float* d_params = cudagphandle.d_params;
+    float *d_params = cudagphandle.d_params;
 
     // create container for the intermediate value
     float *d_interm;

@@ -23,14 +23,20 @@ prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t) {
     checkCudaErrors(cudaMalloc((void**)&d_Xtest, t*d*sizeof(float)));
     checkCudaErrors(cudaMemcpy(d_Xtest, h_Xtest, t*d*sizeof(float), cudaMemcpyHostToDevice));
 
+    // --- Construct full covariance matrix
+    float *d_cov = constructCovMatrix(cudagphandle.d_dataset.X, cudagphandle.d_dataset.n, cudagphandle.d_dataset.d, cudagphandle.kernel, cudagphandle.d_params);
+
+    // --- Calculate Cholesky factorization
+    cholFactorizationL(cudagphandle.cusolverHandle, d_cov, cudagphandle.d_dataset.n);
+
     // --- Calculate Kfy (t by n)
     float *d_covfy = constructCrossCovMatrix(cudagphandle, d_Xtest, t);
 
     // --- Calculate test mean (t by 1)
-    float *d_mean = conditionalMean(cudagphandle, d_Xtest, t, d_covfy);
+    float *d_mean = conditionalMean(cudagphandle, d_cov, d_Xtest, t, d_covfy);
 
     // --- Calculate test covariance (t by t)
-    float* d_tcov = conditionalCov(cudagphandle, d_Xtest, t, d_covfy);
+    float *d_tcov = conditionalCov(cudagphandle, d_cov, d_Xtest, t, d_covfy);
 
     // --- Transfer data to host
 
