@@ -10,7 +10,7 @@
  *
  */
 
-#define BLOCKSIZE 1024
+#define BLOCKSIZE 256
 #define BLOCKSIZE2D 32
 
 /*
@@ -37,6 +37,9 @@ __global__ void constructCovMatrix_k(float *d_X, int n, int d, kernelstring_enum
         float *vecy = &d_X[idy*d];
 
         d_cov[idx*n+idy] = kernfunc(vecx,vecy,d,d_params);
+
+        // TODO: remove this and implement additive kernel selection.
+        if (idx == idy) d_cov[idx*n+idy] = d_cov[idx*n+idy] + 0.001f;
     }
 }
 

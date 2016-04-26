@@ -1,7 +1,10 @@
 #ifndef UTILS_CUDA_H_
 #define UTILS_CUDA_H_
 
+#include <cublas_v2.h>
+#include <cusolverDn.h>
 #include <iostream>
+#include <stdio.h>
 
 /**************************/
 /*  CUDA ERROR CHECKING   */

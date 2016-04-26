@@ -83,7 +83,7 @@ cusolverDnHandle_t initCusolver() {
  * TODO: cluster smartly so that information lost is minimized. (Covariance matrix retains the big numbers for examples.)
  */
 int* splitDataset(int n, int numClusters) {
-    int clusterSize = (n+numClusters-1)/numClusters;
+    int clusterSize = divUp(n, numClusters);
 
     int *startIndices = (int*) malloc(numClusters*sizeof(int));
 
@@ -99,33 +99,71 @@ int* splitDataset(int n, int numClusters) {
  */
 cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel) {
     cudagphandle_t cudagphandle;
+
     cudagphandle.numClusters = 1;
     cudagphandle.d_dataset = (dataset_t*) malloc(sizeof(dataset_t));
     cudagphandle.d_dataset[0] = transferDataToDevice(h_X, h_y, n, d);
     cudagphandle.d_parameters = initDeviceParams(kernel, 0, false);
     cudagphandle.cusolverHandle = initCusolver();
     cudagphandle.cublasHandle = initCublas();
+
     return cudagphandle;
 }
 
 cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, float* defaultparams) {
     cudagphandle_t cudagphandle;
+
     cudagphandle.numClusters = 1;
     cudagphandle.d_dataset = (dataset_t*) malloc(sizeof(dataset_t));
     cudagphandle.d_dataset[0] = transferDataToDevice(h_X, h_y, n, d);
     cudagphandle.d_parameters = initDeviceParams(kernel, defaultparams, true);
     cudagphandle.cusolverHandle = initCusolver();
     cudagphandle.cublasHandle = initCublas();
+
     return cudagphandle;
 }
 
 cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters) {
-    int *start = splitDataset(n, numClusters);
+    cudagphandle_t cudagphandle;
 
+    cudagphandle.numClusters = numClusters;
+    cudagphandle.d_dataset = (dataset_t*) malloc(numClusters*sizeof(dataset_t));
+
+    int *start = splitDataset(n, numClusters);
+    int prev=0;
+    for (int i=0; i<numClusters; i++) {
+        int size = start[i]-prev;
+        cudagphandle.d_dataset[i] = transferDataToDevice(h_X,h_y,size,d);
+        h_X = h_X + size;
+        h_y = h_y + size;
+        prev = start[i];
+    }
+
+    cudagphandle.d_parameters = initDeviceParams(kernel, 0, false);
+    cudagphandle.cusolverHandle = initCusolver();
+    cudagphandle.cublasHandle = initCublas();
+
+    return cudagphandle;
 }
 
 cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters, float* defaultparams) {
+    cudagphandle_t cudagphandle;
 
+    cudagphandle.numClusters = numClusters;
+    cudagphandle.d_dataset = (dataset_t*) malloc(numClusters*sizeof(dataset_t));
+
+    int *start = splitDataset(n, numClusters);
+    for (int i=0; i<numClusters; i++) {
+        int size = i == numClusters-1 ? n - start[i] : start[i+1]-start[i];
+        printf("Cluster %d : size %d\n", i, size);
+        cudagphandle.d_dataset[i] = transferDataToDevice(&h_X[start[i]],&h_y[start[i]],size,d);
+    }
+
+    cudagphandle.d_parameters = initDeviceParams(kernel, defaultparams, true);
+    cudagphandle.cusolverHandle = initCusolver();
+    cudagphandle.cublasHandle = initCublas();
+
+    return cudagphandle;
 }
 
 void freeCudaGP(cudagphandle_t ahandle) {

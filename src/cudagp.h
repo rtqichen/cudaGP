@@ -43,7 +43,7 @@ struct cudagphandle_t {
 
 struct prediction_t {
     float* mean;
-    float* cov;
+    float* var;
     int t;
 };
 

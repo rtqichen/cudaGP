@@ -87,15 +87,32 @@ int main(int argc, const char** argv) {
 
     float params[1] = {10.0f};
 
-    // initialize the GP
+    // test the full GP
     cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
-
     prediction_t pred = predict(cudagphandle, Xtest, t);
 
-    //printMatrix(pred.mean, t, 1);
-    //printDiagOfMatrix(pred.cov, t, t);
+    printf("Full GP Done!\n");
+
+    // test the clustered GP
+    cudagphandle_t cudagphandle2 = initializeCudaDGP(X,y,n,d, cudagpSquaredExponentialKernel, 2, params);
+    prediction_t pred2 = predict(cudagphandle2, Xtest, t);
+
+    printf("Clustered GP Done!\n");
+
+    printMatrix(pred2.mean, t, 1);
+
+    free(X);
+    free(y);
+    free(Xtest);
 
     freeCudaGP(cudagphandle);
+    freeCudaGP(cudagphandle2);
+
+    free(pred.mean);
+    free(pred.var);
+    free(pred2.mean);
+    free(pred2.var);
+
     printf("Done!\n");
 
     cudaDeviceReset();
