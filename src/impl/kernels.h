@@ -24,6 +24,6 @@ __device__ __host__ float rational_quadratic_kernel(float *x, float *y, int d, f
 /**
  * Returns the appropriate kernel function.
  */
-__device__ __host__ kernelfunc getKernelFunction(Kernel_t whatKernel);
+__device__ __host__ kernelfunc getKernelFunction(kernelstring_enum whatKernel);
 
 #endif /* KERNELS_H_ */

@@ -49,7 +49,7 @@ int readData(float* X, float* y, int n) {
     return n;
 }
 
-float* constructCovMatrix_ref(float* X, int n, int d, Kernel_t kernel_string, float* h_kernel_params) {
+float* constructCovMatrix_ref(float* X, int n, int d, kernelstring_enum kernel_string, float* h_kernel_params) {
 
     float* h_cov = (float*)malloc(n*n*sizeof(float));
 

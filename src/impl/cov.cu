@@ -25,7 +25,7 @@
 /**
  * Computes the full covariance matrix and stores it in d_cov.
  */
-__global__ void constructCovMatrix_k(float *d_X, int n, int d, Kernel_t kernel, float* d_params, float* d_cov) {
+__global__ void constructCovMatrix_k(float *d_X, int n, int d, kernelstring_enum kernel, float* d_params, float* d_cov) {
 
     unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
     unsigned int idy = threadIdx.y + blockIdx.y*blockDim.y;
@@ -41,7 +41,7 @@ __global__ void constructCovMatrix_k(float *d_X, int n, int d, Kernel_t kernel, 
 }
 
 
-float* constructCovMatrix(float *d_X, int n, int d, Kernel_t kernel, float *d_params) {
+float* constructCovMatrix(float *d_X, int n, int d, kernelstring_enum kernel, float *d_params) {
 
     dim3 blocksize(BLOCKSIZE2D,BLOCKSIZE2D);
     dim3 gridsize = divUp(dim3(n,n), blocksize);
@@ -58,7 +58,7 @@ float* constructCovMatrix(float *d_X, int n, int d, Kernel_t kernel, float *d_pa
  * Kernel for computing the t by n matrix K(Xtest,X)
  */
 __global__ void constructCrossCovMatrix_k(float *d_X, int n, float *d_Xtest, int t,
-        Kernel_t kernel_string, float *d_kernel_params, int d, float *d_covfy)
+        kernelstring_enum kernel_string, float *d_kernel_params, int d, float *d_covfy)
 {
     unsigned int idx = threadIdx.x + blockIdx.x*blockDim.x;
     unsigned int idy = threadIdx.y + blockIdx.y*blockDim.y;
@@ -76,14 +76,7 @@ __global__ void constructCrossCovMatrix_k(float *d_X, int n, float *d_Xtest, int
 /**
  * Constructs the t by n covariance matrix between two sets of points.
  */
-float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int t)
-{
-    int n = cudagphandle.d_dataset.n;
-    int d = cudagphandle.d_dataset.d;
-    float *d_X = cudagphandle.d_dataset.X;
-    Kernel_t kernel = cudagphandle.kernel;
-    float *d_params = cudagphandle.d_params;
-
+float* constructCrossCovMatrix(float *d_X, int n, int d, float *d_Xtest, int t, kernelstring_enum kernel, float *d_params) {
     dim3 blocksize(BLOCKSIZE2D, BLOCKSIZE2D);
     dim3 gridsize = divUp(dim3(t, n), blocksize);
 
@@ -99,11 +92,7 @@ float* constructCrossCovMatrix(cudagphandle_t cudagphandle, float *d_Xtest, int 
  * Calculates the conditional mean of the test data points given the prior GP.
  * Calculates Kfy * Kyy^-1 * y
  */
-float* conditionalMean(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy) {
-    cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
-    cublasHandle_t cublashandle = cudagphandle.cublasHandle;
-    float *d_y = cudagphandle.d_dataset.y;
-    int n = cudagphandle.d_dataset.n;
+float* conditionalMean(float *d_y, int n, float *d_cov, float *d_Xtest, int t, float *d_covfy, cusolverDnHandle_t cusolverhandle, cublasHandle_t cublashandle) {
 
     // create container for the intermediate value
     float *d_interm;
@@ -138,13 +127,7 @@ float* conditionalMean(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest
  * Calculates the conditional covariance of the test data points given the prior GP.
  * Calculates Kff - Kfy * Kyy^-1 *Kyf
  */
-float* conditionalCov(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest, int t, float *d_covfy) {
-    cusolverDnHandle_t cusolverhandle = cudagphandle.cusolverHandle;
-    cublasHandle_t cublashandle = cudagphandle.cublasHandle;
-    int n = cudagphandle.d_dataset.n;
-    int d = cudagphandle.d_dataset.d;
-    Kernel_t kernel = cudagphandle.kernel;
-    float *d_params = cudagphandle.d_params;
+float* conditionalCov(int n, int d, float *d_cov, float *d_Xtest, int t, float *d_covfy, kernelstring_enum kernel, float *d_params, cusolverDnHandle_t cusolverhandle, cublasHandle_t cublashandle) {
 
     // create container for the intermediate value
     float *d_interm;
@@ -180,7 +163,7 @@ float* conditionalCov(cudagphandle_t cudagphandle, float *d_cov, float *d_Xtest,
  * The Cholesky factorization is stored in (overwrites) the lower
  * triangular half of the covariance matrix.
  */
-void cholFactorizationL(cusolverDnHandle_t cusolverhandle, float* d_cov, int n) {
+void cholFactorizationL(float* d_cov, int n, cusolverDnHandle_t cusolverhandle) {
 
     // --- Compute Cholesky factorization
     int Lwork = 0; float* d_workspace;

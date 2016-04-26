@@ -38,7 +38,7 @@ __device__ __host__ float rational_quadratic_kernel(float *x, float *y, int d, f
 /**
  * Returns the appropriate kernel function.
  */
-__device__ __host__ kernelfunc getKernelFunction(Kernel_t whatKernel) {
+__device__ __host__ kernelfunc getKernelFunction(kernelstring_enum whatKernel) {
     switch (whatKernel) {
     case cudagpSquaredExponentialKernel:
         return squared_exponential_kernel;

@@ -37,27 +37,12 @@ dataset_t transferDataToDevice(const float *h_X, const float* h_y, const int n, 
     return d_data;
 }
 
-/**
- * Transfers the full dataset onto the GPU.
- * Then calculates the covariance matrix along with its Cholesky decomposition.
- */
-cudagphandle_t initializeCudaGP(
-        const float *h_X,
-        const float* h_y,
-        const int n,
-        const int d,
-        const Kernel_t kernel,
-        float* h_defaultParams,
-        bool useDefaultparams) {
-
-    // --- Transfer dataset to GPU
-    dataset_t d_ds = transferDataToDevice(h_X,h_y,n,d);
-
+parameters_t initDeviceParams(kernelstring_enum kernel, float *h_defaultParams, bool useDefaultParams) {
     // --- Set kernel parameters
     int np = numParams(kernel);
-    float* h_params;
+    float *h_params;
 
-    if (!h_defaultParams) {
+    if (!useDefaultParams) {
         h_params = (float*) malloc(np*sizeof(float));
         for (int i=0; i<np; i++) {
             h_params[i] = rand() / RAND_MAX; // is there a smarter way to do initialization? this can introduce numerical instability.
@@ -66,42 +51,89 @@ cudagphandle_t initializeCudaGP(
         h_params = h_defaultParams;
     }
 
-    float* d_params;
-    checkCudaErrors(cudaMalloc((void**)&d_params, np*sizeof(float)));
-    checkCudaErrors(cudaMemcpy(d_params, h_params, np*sizeof(float), cudaMemcpyHostToDevice));
+    float *d_paramvalues;
+    checkCudaErrors(cudaMalloc((void**)&d_paramvalues, np*sizeof(float)));
+    checkCudaErrors(cudaMemcpy(d_paramvalues, h_params, np*sizeof(float), cudaMemcpyHostToDevice));
 
+    parameters_t d_parameters;
+    d_parameters.kernel = kernel;
+    d_parameters.values = d_paramvalues;
+    d_parameters.numParams = np;
+
+    return d_parameters;
+}
+
+cublasHandle_t initCublas() {
     // --- CuBLAS initialization
     cublasHandle_t cublashandle;
     cublasCreate(&cublashandle);
+    return cublashandle;
+}
 
+cusolverDnHandle_t initCusolver() {
     // --- CuSolver initialization
     cusolverDnHandle_t cusolverhandle;
     cusolverDnCreate(&cusolverhandle);
+    return cusolverhandle;
+}
 
-    // --- CudaGP handle
+/**
+ * Splits the dataset into clusters.
+ * For now, just returns an array of the indices of the start of each cluster.
+ * TODO: cluster smartly so that information lost is minimized. (Covariance matrix retains the big numbers for examples.)
+ */
+int* splitDataset(int n, int numClusters) {
+    int clusterSize = (n+numClusters-1)/numClusters;
+
+    int *startIndices = (int*) malloc(numClusters*sizeof(int));
+
+    startIndices[0] = 0;
+    for (int i=1; i<numClusters; i++) {
+        startIndices[i] = startIndices[i-1]+clusterSize < n ? startIndices[i-1]+clusterSize : n;
+    }
+    return startIndices;
+}
+
+/**
+ * Construction calls for cudaGP.
+ */
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel) {
     cudagphandle_t cudagphandle;
-    cudagphandle.d_dataset = d_ds;
-    cudagphandle.kernel = kernel;
-    cudagphandle.numParams = np;
-    cudagphandle.d_params = d_params;
-    cudagphandle.cusolverHandle = cusolverhandle;
-    cudagphandle.cublasHandle = cublashandle;
-
+    cudagphandle.numClusters = 1;
+    cudagphandle.d_dataset = (dataset_t*) malloc(sizeof(dataset_t));
+    cudagphandle.d_dataset[0] = transferDataToDevice(h_X, h_y, n, d);
+    cudagphandle.d_parameters = initDeviceParams(kernel, 0, false);
+    cudagphandle.cusolverHandle = initCusolver();
+    cudagphandle.cublasHandle = initCublas();
     return cudagphandle;
 }
 
-cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel) {
-    return initializeCudaGP(h_X, h_y, n, d, kernel, 0, false);
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, float* defaultparams) {
+    cudagphandle_t cudagphandle;
+    cudagphandle.numClusters = 1;
+    cudagphandle.d_dataset = (dataset_t*) malloc(sizeof(dataset_t));
+    cudagphandle.d_dataset[0] = transferDataToDevice(h_X, h_y, n, d);
+    cudagphandle.d_parameters = initDeviceParams(kernel, defaultparams, true);
+    cudagphandle.cusolverHandle = initCusolver();
+    cudagphandle.cublasHandle = initCublas();
+    return cudagphandle;
 }
 
-cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams) {
-    return initializeCudaGP(h_X, h_y, n, d, kernel, defaultparams, true);
+cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters) {
+    int *start = splitDataset(n, numClusters);
+
+}
+
+cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters, float* defaultparams) {
+
 }
 
 void freeCudaGP(cudagphandle_t ahandle) {
-    checkCudaErrors(cudaFree(ahandle.d_dataset.X));
-    checkCudaErrors(cudaFree(ahandle.d_dataset.y));
-    checkCudaErrors(cudaFree(ahandle.d_params));
+    for (int i=0; i<ahandle.numClusters; i++) {
+        checkCudaErrors(cudaFree(ahandle.d_dataset[i].X));
+        checkCudaErrors(cudaFree(ahandle.d_dataset[i].y));
+    }
+    checkCudaErrors(cudaFree(ahandle.d_parameters.values));
     checkCusolverErrors(cusolverDnDestroy(ahandle.cusolverHandle));
     cublasDestroy(ahandle.cublasHandle);
 }

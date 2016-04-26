@@ -25,14 +25,18 @@ typedef enum {
     cudagpSquaredExponentialKernel,
     cudagpExponentialKernel,
     cudagpRationalQuadraticKernel
-} Kernel_t;
+} kernelstring_enum;
+
+struct parameters_t {
+    kernelstring_enum kernel;
+    float *values;
+    int numParams;
+};
 
 struct cudagphandle_t {
     int numClusters;
-    dataset_t d_dataset;
-    Kernel_t kernel;
-    float* d_params;
-    int numParams;
+    dataset_t *d_dataset;
+    parameters_t d_parameters;
     cusolverDnHandle_t cusolverHandle;
     cublasHandle_t cublasHandle;
 };
@@ -43,7 +47,7 @@ struct prediction_t {
     int t;
 };
 
-static int numParams(Kernel_t kernel) {
+static int numParams(kernelstring_enum kernel) {
     switch(kernel) {
     case cudagpSquaredExponentialKernel:
         return 1;
@@ -61,15 +65,15 @@ static int numParams(Kernel_t kernel) {
 /**
  * Initializes cudaGP on the GPU, and returns a handle.
  */
-cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel); // parameters will be randomized
-cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams); // parameters will be set to these default ones.
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel); // parameters will be randomized
+cudagphandle_t initializeCudaGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, float* defaultparams); // parameters will be set to these default ones.
 prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t);
 void freeCudaGP(cudagphandle_t ahandle); // frees up the GPU memory.
 
 /**
  * Initializes "distributed" GP.
  */
-cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel); // parameters will be randomized
-cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, Kernel_t kernel, float* defaultparams); // parameters will be set to these default ones.
+cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters); // parameters will be randomized
+cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstring_enum kernel, int numClusters, float* defaultparams); // parameters will be set to these default ones.
 
 #endif /* CUDAGP_H_ */
