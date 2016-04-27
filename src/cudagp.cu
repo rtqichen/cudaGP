@@ -127,7 +127,7 @@ int main(int argc, const char** argv) {
             prediction_t pred = predict(cudagphandle, Xtest, t);
         }
         clock_t toc = clock();
-        printf("Full GP Prediction - Elapsed time: %f seconds\n\n", (double)(toc - tic) / CLOCKS_PER_SEC);
+        printf("Full GP Prediction - Elapsed time: %f seconds\n\n", (double)(toc - tic) / CLOCKS_PER_SEC / ntrials);
 
     } while (false);
 
@@ -143,7 +143,7 @@ int main(int argc, const char** argv) {
                 prediction_t pred2 = predict(cudagphandle2, Xtest, t);
             }
             clock_t toc = clock();
-            printf("K=%d Sparse GP Prediction - Elapsed time: %f seconds\n", numClusters[k], (double)(toc - tic) / CLOCKS_PER_SEC);
+            printf("K=%d Sparse GP Prediction - Elapsed time: %f seconds\n", numClusters[k], (double)(toc - tic) / CLOCKS_PER_SEC / ntrials);
 
         }
     } while (false);
