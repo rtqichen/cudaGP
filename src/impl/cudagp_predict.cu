@@ -85,9 +85,8 @@ prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t) {
 
         // --- Add a bit of signal noise
         // TODO: remove this and implement additive kernels
-        float *d_eye = eye(n);
         float sigma = 0.05f;
-        checkCublasErrors(cublasSaxpy_v2(cublashandle, n*n, &sigma, d_eye, 1, d_cov, 1));
+        diagAdd(d_cov, n, sigma);
 
         // --- Calculate Cholesky factorization
         cholFactorizationL(d_cov, n, cusolverhandle);

@@ -65,3 +65,20 @@ float* diag(float* d_A, int n) {
 
     return d_diag;
 }
+
+__global__ void addDiag_k(float* d_A, int n, float alpha) {
+    unsigned int idx = threadIdx.x + ELEMWISE_WORK*blockIdx.x*blockDim.x;
+
+    for (int i=0; i<ELEMWISE_WORK; i++) {
+        if (idx+ELEMWISE_WORK < n) d_A[idx*n+idx] += alpha;
+    }
+}
+
+void diagAdd(float* d_A, int n, float alpha) {
+    int nthreads = divUp(n,ELEMWISE_WORK);
+
+    dim3 blocksize(BLOCKSIZE);
+    dim3 gridsize = divUp(nthreads, BLOCKSIZE);
+
+    addDiag_k<<<gridsize,blocksize>>>(d_A,n,alpha);
+}

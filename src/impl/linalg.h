@@ -31,4 +31,9 @@ void elementwiseMultiplication(float* d_A, float* d_B, int n);
  */
 float* diag(float* d_A, int n);
 
+/**
+ * Adds alpha to the diagonal elements of a square matrix A.
+ */
+void diagAdd(float* d_A, int n, float alpha);
+
 #endif /* LINALG_H_ */
