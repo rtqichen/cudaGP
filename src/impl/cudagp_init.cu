@@ -130,13 +130,9 @@ cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstr
     cudagphandle.d_dataset = (dataset_t*) malloc(numClusters*sizeof(dataset_t));
 
     int *start = splitDataset(n, numClusters);
-    int prev=0;
     for (int i=0; i<numClusters; i++) {
-        int size = start[i]-prev;
-        cudagphandle.d_dataset[i] = transferDataToDevice(h_X,h_y,size,d);
-        h_X = h_X + size;
-        h_y = h_y + size;
-        prev = start[i];
+        int size = i == numClusters-1 ? n - start[i] : start[i+1]-start[i];
+        cudagphandle.d_dataset[i] = transferDataToDevice(&h_X[start[i]],&h_y[start[i]],size,d);
     }
 
     cudagphandle.d_parameters = initDeviceParams(kernel, 0, false);
@@ -155,7 +151,6 @@ cudagphandle_t initializeCudaDGP(float *h_X, float* h_y, int n, int d, kernelstr
     int *start = splitDataset(n, numClusters);
     for (int i=0; i<numClusters; i++) {
         int size = i == numClusters-1 ? n - start[i] : start[i+1]-start[i];
-        printf("Cluster %d : size %d\n", i, size);
         cudagphandle.d_dataset[i] = transferDataToDevice(&h_X[start[i]],&h_y[start[i]],size,d);
     }
 

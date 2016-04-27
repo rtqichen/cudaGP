@@ -37,9 +37,6 @@ __global__ void constructCovMatrix_k(float *d_X, int n, int d, kernelstring_enum
         float *vecy = &d_X[idy*d];
 
         d_cov[idx*n+idy] = kernfunc(vecx,vecy,d,d_params);
-
-        // TODO: remove this and implement additive kernel selection.
-        if (idx == idy) d_cov[idx*n+idy] = d_cov[idx*n+idy] + 0.001f;
     }
 }
 
@@ -192,7 +189,7 @@ __global__ void eye_k(unsigned int n, float* d_eye) {
     unsigned int idx = blockIdx.x * (MULTI*dimx) + threadIdx.x;
     unsigned int idy = blockIdx.y * (MULTI*dimy) + threadIdx.y;
 
-    if (idx < n || idy < n)
+    if (idx >= n || idy >= n)
         return;
 
     for (int i=0; i<MULTI; i++) {

@@ -39,6 +39,6 @@ void cholFactorizationL(float* d_cov, int n, cusolverDnHandle_t cusolverhandle);
  * Constructs a dense n by n identity matrix on the device,
  * placing it in the address location specified by d_eye.
  */
-void eye(int n, float* d_eye);
+float* eye(unsigned int n);
 
 #endif /* COV_H_ */

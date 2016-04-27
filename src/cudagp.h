@@ -50,7 +50,7 @@ struct prediction_t {
 static int numParams(kernelstring_enum kernel) {
     switch(kernel) {
     case cudagpSquaredExponentialKernel:
-        return 1;
+        return 2;
     case cudagpExponentialKernel:
         return 1;
     case cudagpRationalQuadraticKernel:

@@ -4,7 +4,9 @@
 
 #include "cudagp.h"
 #include <stdio.h>
+#include <math.h>
 #include "impl/kernels.h"
+#include <time.h>
 
 void randomFloats(float* h_matrix, int size) {
     for (int i=0; i<size; i++) {
@@ -16,7 +18,7 @@ void printMatrix(float* matrix, int numRows, int numCols) {
     printf("Printing %d by %d matrix:\n", numRows, numCols);
     for (int i=0; i<numRows; i++) {
         for (int j=0; j<numCols; j++) {
-            printf("%.4f ", matrix[i*numCols+j]);
+            printf("%.8f ", matrix[i*numCols+j]);
         }
         printf("\n");
     }
@@ -31,18 +33,18 @@ void printDiagOfMatrix(float* matrix, int numRows, int numCols) {
 
 int readData(float* X, float* y, int n) {
 
-    FILE *infile = fopen("testdata/grayroos.dat", "r");
+    FILE *infile = fopen("test_data", "r");
     if (!infile) {
         printf("Failed to read file.");
     }
 
     int i=0;
     char line[100];
-    int a,b;
+    float a,b;
     while(i<n && fgets(line, sizeof(line), infile) != NULL) {
-        sscanf(line, "%d\t%d[^\n]", &a, &b);
-        X[i] = (float) a;
-        y[i] = (float) b;
+        sscanf(line, "%f\t%f[^\n]", &a, &b);
+        X[i] = a;
+        y[i] = b;
         i++;
     }
 
@@ -72,49 +74,98 @@ float* linspace(int min, int max, int len) {
     return x;
 }
 
+/**
+ * Generates random numbers uniformly in [min, max]
+ */
+float* uniform(int len, float max, float min) {
+    float *x = (float*) malloc(len*sizeof(float));
+    for (int i=0; i<len; i++) {
+        x[i] = ((float)rand()/(float)RAND_MAX) * (max-min+1) + min;
+    }
+    return x;
+}
+
+float* func(float *x, int n) {
+    float *y = (float*) malloc(n*sizeof(float));
+    for (int i=0; i<n; i++) {
+        y[i] = sin(x[i]) + ((float)rand()/(float)RAND_MAX) * 0.4;
+    }
+    return y;
+}
+
 int main(int argc, const char** argv) {
 
     srand(0);
 
-    int n = 42;
+    int n = 10000;
     int d = 1;
-    float* X = (float*)malloc(n*d*sizeof(float));
-    float* y = (float*)malloc(n*sizeof(float));
-    readData(X, y, n);
+    //float* X = (float*)malloc(n*d*sizeof(float));
+    //float* y = (float*)malloc(n*sizeof(float));
+    //readData(X, y, n);
+
+    float *X = uniform(n, -400, 400);
+    float *y = func(X, n);
+
+//    printf("Data:\n");
+//    printMatrix(X, n, 1);
+//    printMatrix(y, n, 1);
 
     int t = 201;
-    float* Xtest = linspace(500, 860, t);
+    float* Xtest = linspace(-400, 400, t);
 
-    float params[1] = {10.0f};
+    float params[2] = {1.8, 1.15};
 
-    // test the full GP
-    cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
-    prediction_t pred = predict(cudagphandle, Xtest, t);
+    int ntrials = 10;
 
-    printf("Full GP Done!\n");
+    // time the full GP
+    printf("Timing the Full GP implementation . . .\n");
+    do {
 
-    // test the clustered GP
-    cudagphandle_t cudagphandle2 = initializeCudaDGP(X,y,n,d, cudagpSquaredExponentialKernel, 2, params);
-    prediction_t pred2 = predict(cudagphandle2, Xtest, t);
+        clock_t tic = clock();
+        for (int i=0; i<ntrials; i++) {
+            cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
+            prediction_t pred = predict(cudagphandle, Xtest, t);
+        }
+        clock_t toc = clock();
+        printf("Full GP Prediction - Elapsed time: %f seconds\n\n", (double)(toc - tic) / CLOCKS_PER_SEC);
 
-    printf("Clustered GP Done!\n");
+    } while (false);
 
-    printMatrix(pred2.mean, t, 1);
+    // time the clustered GP with k clusters
+    printf("Timing the data-parallel GP implementation . . .\n");
+    do {
+        int numClusters[7] = {10,20,50,100,200,500,1000};
+        for (int k=0; k<7; k++) {
 
-    free(X);
-    free(y);
-    free(Xtest);
+            clock_t tic = clock();
+            for (int i=0; i<ntrials; i++) {
+                cudagphandle_t cudagphandle2 = initializeCudaDGP(X,y,n,d, cudagpSquaredExponentialKernel, numClusters[k], params);
+                prediction_t pred2 = predict(cudagphandle2, Xtest, t);
+            }
+            clock_t toc = clock();
+            printf("K=%d Sparse GP Prediction - Elapsed time: %f seconds\n", numClusters[k], (double)(toc - tic) / CLOCKS_PER_SEC);
 
-    freeCudaGP(cudagphandle);
-    freeCudaGP(cudagphandle2);
+        }
+    } while (false);
 
-    free(pred.mean);
-    free(pred.var);
-    free(pred2.mean);
-    free(pred2.var);
+//    printf("Xtest:\n"); printMatrix(Xtest, t, 1);
+//    printf("Mean:\n"); printMatrix(pred2.mean, t, 1);
+//    printf("Marginal Variance:\n"); printMatrix(pred2.var, t, 1);
 
-    printf("Done!\n");
-
-    cudaDeviceReset();
+//    free(X);
+//    free(y);
+//    free(Xtest);
+//
+//    freeCudaGP(cudagphandle);
+//    freeCudaGP(cudagphandle2);
+//
+//    free(pred.mean);
+//    free(pred.var);
+//    free(pred2.mean);
+//    free(pred2.var);
+//
+//    printf("Done!\n");
+//
+//    cudaDeviceReset();
     return EXIT_SUCCESS;
 }

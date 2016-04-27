@@ -10,6 +10,16 @@
 #include "linalg.h"
 #include "utils_cuda.h"
 
+void printMatrixNow(float* matrix, int numRows, int numCols) {
+    printf("Printing %d by %d matrix:\n", numRows, numCols);
+    for (int i=0; i<numRows; i++) {
+        for (int j=0; j<numCols; j++) {
+            printf("%.2f ", matrix[i*numCols+j]);
+        }
+        printf("\n");
+    }
+}
+
 void aggregatePOE(float* d_tmean, float* d_tvar, float* d_clusterMean, float* d_clusterCov, int t, cublasHandle_t cublashandle) {
     float alpha = 1.0f;
 
@@ -72,6 +82,12 @@ prediction_t predict(cudagphandle_t cudagphandle, float* h_Xtest, int t) {
 
         // --- Construct full covariance matrix
         float *d_cov = constructCovMatrix(d_X, n, d, kernel, d_params);
+
+        // --- Add a bit of signal noise
+        // TODO: remove this and implement additive kernels
+        float *d_eye = eye(n);
+        float sigma = 0.05f;
+        checkCublasErrors(cublasSaxpy_v2(cublashandle, n*n, &sigma, d_eye, 1, d_cov, 1));
 
         // --- Calculate Cholesky factorization
         cholFactorizationL(d_cov, n, cusolverhandle);
