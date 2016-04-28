@@ -7,6 +7,7 @@
 #include <math.h>
 #include "impl/kernels.h"
 #include <time.h>
+#include "impl/utils_cuda.h"
 
 void randomFloats(float* h_matrix, int size) {
     for (int i=0; i<size; i++) {
@@ -93,11 +94,53 @@ float* func(float *x, int n) {
     return y;
 }
 
+double getMean(double *x, int size) {
+    double sum = 0.0;
+    for (int i=0; i<size; i++) {
+        sum += x[i];
+    }
+    return sum/size;
+}
+
+double getStdev(double *x, int size) {
+    double var = 0.0;
+    double mean = getMean(x, size);
+    for (int i=0; i<size; i++) {
+        var += (x[i]-mean)*(x[i]-mean);
+    }
+    return sqrt(var/(size-1));
+}
+
+void warmup() {
+    int n = 30;
+    int d = 1;
+
+    float *X = uniform(n, -400, 400);
+    float *y = func(X, n);
+
+    int t = 201;
+    float* Xtest = linspace(-400, 400, t);
+
+    float params[2] = {1.8, 1.15};
+
+    cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
+    prediction_t pred = predict(cudagphandle, Xtest, t);
+
+    free(Xtest);
+    free(X);
+    free(y);
+    freeCudaGP(cudagphandle);
+    free(pred.mean);
+    free(pred.var);
+}
+
+#define NTESTS 8
+
 int main(int argc, const char** argv) {
 
     srand(0);
 
-    int n = 10000;
+    int n = 7000;
     int d = 1;
     //float* X = (float*)malloc(n*d*sizeof(float));
     //float* y = (float*)malloc(n*sizeof(float));
@@ -105,6 +148,10 @@ int main(int argc, const char** argv) {
 
     float *X = uniform(n, -400, 400);
     float *y = func(X, n);
+
+    warmup();
+
+    printf("Using N=%d training data.\n", n);
 
 //    printf("Data:\n");
 //    printMatrix(X, n, 1);
@@ -115,36 +162,45 @@ int main(int argc, const char** argv) {
 
     float params[2] = {1.8, 1.15};
 
-    int ntrials = 10;
+    int ntrials = 20;
 
     // time the full GP
-    printf("Timing the Full GP implementation . . .\n");
-    do {
-
-        clock_t tic = clock();
-        for (int i=0; i<ntrials; i++) {
-            cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
-            prediction_t pred = predict(cudagphandle, Xtest, t);
-        }
-        clock_t toc = clock();
-        printf("Full GP Prediction - Elapsed time: %f seconds\n\n", (double)(toc - tic) / CLOCKS_PER_SEC / ntrials);
-
-    } while (false);
+//    do {
+//
+//        printf("Timing the Full GP implementation . . .\n") ;
+//        clock_t tic = clock();
+//        for (int i=0; i<ntrials; i++) {
+//            cudagphandle_t cudagphandle = initializeCudaGP(X,y,n,d, cudagpSquaredExponentialKernel, params);
+//            prediction_t pred = predict(cudagphandle, Xtest, t);
+//        }
+//        clock_t toc = clock();
+//        printf("Full GP Prediction - Elapsed time: %f seconds\n\n", (double)(toc - tic) / CLOCKS_PER_SEC / ntrials);
+//
+//    } while (false);
 
     // time the clustered GP with k clusters
-    printf("Timing the data-parallel GP implementation . . .\n");
     do {
-        int numClusters[7] = {10,20,50,100,200,500,1000};
-        for (int k=0; k<7; k++) {
+        printf("Timing the data-parallel GP implementation . . .\n");
+        int numClusters[NTESTS] = {1,10,20,50,100,200,500,1000};
+        double times[ntrials];
+        for (int k=0; k<NTESTS; k++) {
 
-            clock_t tic = clock();
+            clock_t tic;
+            clock_t toc;
             for (int i=0; i<ntrials; i++) {
+                tic = clock();
                 cudagphandle_t cudagphandle2 = initializeCudaDGP(X,y,n,d, cudagpSquaredExponentialKernel, numClusters[k], params);
                 prediction_t pred2 = predict(cudagphandle2, Xtest, t);
-            }
-            clock_t toc = clock();
-            printf("K=%d Sparse GP Prediction - Elapsed time: %f seconds\n", numClusters[k], (double)(toc - tic) / CLOCKS_PER_SEC / ntrials);
+                toc = clock();
+                times[i] = (double)(toc - tic) / CLOCKS_PER_SEC;
 
+                freeCudaGP(cudagphandle2);
+                free(pred2.mean);
+                free(pred2.var);
+            }
+            double mean = getMean(times,ntrials);
+            double stdev = getStdev(times,ntrials);
+            printf("K=%d Sparse GP Prediction - Elapsed time: %f seconds with std %f seconds\n", numClusters[k], mean, stdev);
         }
     } while (false);
 
